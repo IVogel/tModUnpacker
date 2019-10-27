@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.IO.Compression;
 using System.Collections;
+using System;
 
 namespace tModUnpacker
 {
@@ -10,6 +11,11 @@ namespace tModUnpacker
 	{
 		public long filestart;
 		public long filesize;
+		public int  compressedlen;
+		public bool iscompressed {
+			get { return compressedlen != filesize; }
+		}
+
 	}
 
 	struct tModFile
@@ -21,12 +27,12 @@ namespace tModUnpacker
 
 	struct tModInfo
 	{
-		public string modloaderversion;
-		public string modversion;
-		public string modname;
-		public byte[] modhash;
-		public byte[] modsignature;
-		public int    filecount;
+		public Version modloaderversion;
+		public Version modversion;
+		public string  modname;
+		public byte[]  modhash;
+		public byte[]  modsignature;
+		public int     filecount;
 	}
 
 	class tMod : IEnumerable<tModFile>, IEnumerable
@@ -71,9 +77,19 @@ namespace tModUnpacker
 			{
 				tModFileInfo file = this.files[path];
 				this.tempfile.Seek(file.filestart, SeekOrigin.Begin);
-				byte[] data = new byte[file.filesize];
-				this.tempfile.Read(data, 0, (int)file.filesize);
 
+				byte[] data = data = new byte[file.filesize];
+				if (file.iscompressed)
+				{
+					byte[] compresseddata = new byte[file.compressedlen];
+					this.tempfile.Read(compresseddata, 0, (int)file.compressedlen);
+					Stream stream = new MemoryStream(compresseddata);
+					DeflateStream inflateStream = new DeflateStream(stream, CompressionMode.Decompress);
+					inflateStream.Read(data, 0, (int)file.filesize);
+
+				} else {
+					this.tempfile.Read(data, 0, (int)file.filesize);
+				}
 				return data;
 			}
 			return null;
@@ -98,29 +114,58 @@ namespace tModUnpacker
 				if (Encoding.ASCII.GetString(binaryReader.ReadBytes(4)) != "TMOD")
 					return false;
 
-				info.modloaderversion = binaryReader.ReadString();
+				info.modloaderversion = new Version(binaryReader.ReadString());
 				info.modhash          = binaryReader.ReadBytes(20);
 				info.modsignature     = binaryReader.ReadBytes(256);
-
 				fileStream.Seek(4, SeekOrigin.Current);
-
-				DeflateStream inflateStream = new DeflateStream(fileStream, CompressionMode.Decompress);
-				inflateStream.CopyTo(this.tempfile);
-				inflateStream.Close();
-				this.tempfile.Seek(0, SeekOrigin.Begin);
-				BinaryReader tempFileBinaryReader = new BinaryReader(this.tempfile);
-
-				info.modname    = tempFileBinaryReader.ReadString();
-				info.modversion = tempFileBinaryReader.ReadString();
-				info.filecount  = tempFileBinaryReader.ReadInt32();
-				for (int index = 0; index < info.filecount; index++)
+				if (info.modloaderversion < new Version(0, 11))
 				{
-					tModFileInfo file  = new tModFileInfo();
-					string path        = tempFileBinaryReader.ReadString().Replace("\\", "/");
-					file.filesize      = tempFileBinaryReader.ReadInt32();
-					file.filestart     = this.tempfile.Position;
-					this.tempfile.Seek(file.filesize, SeekOrigin.Current);
-					this.files.Add(path, file);
+					// Older versions file format.
+					DeflateStream inflateStream = new DeflateStream(fileStream, CompressionMode.Decompress);
+					inflateStream.CopyTo(this.tempfile);
+					inflateStream.Close();
+					this.tempfile.Seek(0, SeekOrigin.Begin);
+					BinaryReader tempFileBinaryReader = new BinaryReader(this.tempfile);
+
+					info.modname    = tempFileBinaryReader.ReadString();
+					info.modversion = new Version(tempFileBinaryReader.ReadString());
+					info.filecount  = tempFileBinaryReader.ReadInt32();
+					for (int index = 0; index < info.filecount; index++)
+					{
+						tModFileInfo file = new tModFileInfo();
+						string path       = tempFileBinaryReader.ReadString().Replace("\\", "/");
+						file.filesize     = tempFileBinaryReader.ReadInt32();
+						file.filestart    = this.tempfile.Position;
+						this.tempfile.Seek(file.filesize, SeekOrigin.Current);
+						this.files.Add(path, file);
+					}	
+				} else {
+					// Current file format
+					fileStream.CopyTo(this.tempfile);
+					this.tempfile.Seek(0, SeekOrigin.Begin);
+					BinaryReader tempFileBinaryReader = new BinaryReader(this.tempfile);
+					info.modname    = tempFileBinaryReader.ReadString();
+					info.modversion = new Version(tempFileBinaryReader.ReadString());
+					info.filecount  = tempFileBinaryReader.ReadInt32();
+					int WTF = 0;
+					IDictionary<string, tModFileInfo> wtfDict = new Dictionary<string, tModFileInfo>();
+					for (int index = 0; index < info.filecount; index++)
+					{
+						tModFileInfo file  = new tModFileInfo();
+						string path        = tempFileBinaryReader.ReadString().Replace("\\", "/");
+						file.filesize      = tempFileBinaryReader.ReadInt32();
+						file.filestart     = WTF;
+						file.compressedlen = tempFileBinaryReader.ReadInt32();
+						WTF               += file.compressedlen;
+						wtfDict.Add(path, file);
+					}
+					int datastart = (int)this.tempfile.Position;
+					foreach (string fileName in wtfDict.Keys)
+					{
+						tModFileInfo file = wtfDict[fileName];
+						file.filestart   += datastart;
+						this.files.Add(fileName, file);
+					}
 				}
 				this.info = info;
 				return true;
