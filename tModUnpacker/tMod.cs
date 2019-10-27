@@ -145,6 +145,7 @@ namespace tModUnpacker
 					this.tempfile.Seek(0, SeekOrigin.Begin);
 					BinaryReader tempFileBinaryReader = new BinaryReader(this.tempfile);
 					info.modname    = tempFileBinaryReader.ReadString();
+					Console.WriteLine(info.modname);
 					info.modversion = new Version(tempFileBinaryReader.ReadString());
 					info.filecount  = tempFileBinaryReader.ReadInt32();
 					int WTF = 0;
@@ -179,7 +180,15 @@ namespace tModUnpacker
 
 			if (data == null)
 				return false;
-
+			string ext = Path.GetExtension(filename).ToLower();
+			if (ext != null && ext == ".rawimg")
+			{
+				System.Drawing.Bitmap image = RawImage.RawToPng(data);
+				MemoryStream stream         = new MemoryStream();
+				image.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+				WriteFile(Path.ChangeExtension(path, "png"), stream.ToArray());
+				return true;
+			}
 			WriteFile(path, data);
 			return true;
 		}
