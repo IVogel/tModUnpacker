@@ -1,10 +1,28 @@
 ﻿using System;
 using System.IO;
+using System.Text;
 
 namespace tModUnpacker
 {
 	class main
 	{
+		static ItMod get_suitable_unpacker(string path)
+		{
+			Version ver;
+			using (FileStream fileStream = File.OpenRead(path))
+			{
+				BinaryReader binaryReader = new BinaryReader(fileStream);
+				if (Encoding.ASCII.GetString(binaryReader.ReadBytes(4)) != "TMOD")
+					throw new IOException("Can't read tMod magic bytes");
+				ver = new Version(binaryReader.ReadString());
+			}
+
+			if (ver < new Version(0, 11))
+				return new tMod_Old(path);
+			else
+				return new tMod(path);
+		}
+
 		static void Main(string[] args)
 		{
 			int  nArgs = args.Length;
@@ -28,7 +46,7 @@ namespace tModUnpacker
 			{
 				outputpath = args[1];
 			}
-			tMod mod = new tMod(args[0]);
+			ItMod mod = get_suitable_unpacker(args[0]);
 			mod.ReadMod();
 			mod.DumpFiles(outputpath, filename => Console.WriteLine($"\tWriting: {filename}"));
 		}
