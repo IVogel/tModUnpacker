@@ -18,5 +18,5 @@ Even if modder has set flags such as `hideCode` and `hideResources` to true. (tM
 #### Downloads
 All versions: https://github.com/IVogel/tModUnpacker/releases
 
-1.2: https://github.com/IVogel/tModUnpacker/releases/tag/1.2
+1.2: https://github.com/IVogel/tModUnpacker/releases/tag/1.2<br>
 1.3: https://github.com/IVogel/tModUnpacker/releases/tag/1.3
